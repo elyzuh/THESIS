@@ -34,11 +34,12 @@ class Optim(object):
         grad_norm = 0
         # for param in self.params:
         for name, param in self.named_params:
-            # print ("-------------")
-            # print (name)
-            # print (param)
-            # print (param.grad)
-
+            # ---------------------------------------------------------
+            # FIX: Skip parameters that were not used in the forward pass
+            if param.grad is None:
+                continue
+            # ---------------------------------------------------------
+            
             grad_norm += math.pow(param.grad.data.norm(), 2)
 
         grad_norm = math.sqrt(grad_norm)
@@ -49,6 +50,10 @@ class Optim(object):
             shrinkage = 1.
 
         for param in self.params:
+            # FIX: Check here as well
+            if param.grad is None:
+                continue
+                
             if shrinkage < 1:
                 param.grad.data.mul_(shrinkage)
 
