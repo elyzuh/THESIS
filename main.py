@@ -8,9 +8,7 @@ import time
 
 import torch
 import torch.nn as nn
-# from models import AR, VAR, GAR, RNN, VAR_mask
-# from models import CNNRNN, CNNRNN_Res, CNNRNN_Res_epi
-from models import CNNRNN_Res_epi
+from models import SEIRmodel
 import numpy as np
 import sys
 import os
@@ -33,7 +31,7 @@ parser = argparse.ArgumentParser(description='Epidemiology Forecasting')
 parser.add_argument('--data', type=str, required=True,help='location of the data file')
 parser.add_argument('--train', type=float, default=0.6,help='how much data used for training')
 parser.add_argument('--valid', type=float, default=0.2,help='how much data used for validation')
-parser.add_argument('--model', type=str, default='CNNRNN_Res_epi',help='model to select')
+parser.add_argument('--model', type=str, default='SEIRmodel',help='model to select')
 # --- CNNRNN option
 parser.add_argument('--sim_mat', type=str,help='file of similarity measurement (Required for CNNRNN_Res_epi)')
 parser.add_argument('--hidRNN', type=int, default=50, help='number of RNN hidden units')
@@ -111,7 +109,7 @@ optim = Optim.Optim(
     model.parameters(), args.optim, args.lr, args.clip, model.named_parameters(), weight_decay = args.weight_decay,
 )
 
-ifPlot = 1
+ifPlot = 0
 
 # At any point you can hit Ctrl + C to break out of training early.
 try:
