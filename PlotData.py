@@ -9,8 +9,8 @@ import torch.nn as nn
 from utils_ModelTrainEval import *
 from utils import *
 
-from models import AR, VAR, GAR, RNN, VAR_mask
-from models import CNNRNN, CNNRNN_Res, CNNRNN_Res_epi
+from models import AR, VAR, GAR, RNN, SEIRmodel, VAR_mask
+from models import CNNRNN, CNNRNN_Res
 
 import argparse
 
