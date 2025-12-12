@@ -18,7 +18,7 @@ def evaluate(loader, data, model, evaluateL2, evaluateL1, batch_size, modelName)
     for inputs in loader.get_batches(data, batch_size, False):
         X, Y = inputs[0], inputs[1]
 
-        if modelName == "CNNRNN_Res_epi":
+        if modelName == "SEIRmodel":
             # Unpack 5 values (res, EpiOutput, Beta, Gamma, Sigma)
             output, EpiOutput, _, _, _ = model(X);
         else:
@@ -81,7 +81,7 @@ def train(loader, data, model, criterion, optim, batch_size, modelName, Lambda):
 
         model.zero_grad();
 
-        if modelName == "CNNRNN_Res_epi":
+        if modelName == "SEIRmodel":
             output, EpiOutput, _, _, _ = model(X);
         else:
             output = model(X);
@@ -90,7 +90,7 @@ def train(loader, data, model, criterion, optim, batch_size, modelName, Lambda):
         
         # --------------------------------------------
         # modified loss with epidemiological constrains
-        if modelName == "CNNRNN_Res_epi":
+        if modelName == "SEIRmodel":
             # Ensure EpiOutput is on same device and scale
             loss = criterion(output * scale, Y * scale) + Lambda*criterion(EpiOutput * scale, Y * scale);
         else:
@@ -117,7 +117,7 @@ def GetPrediction(loader, data, model, evaluateL2, evaluateL1, batch_size, model
 
     # print ("--------- Get prediction")
     counter = 0
-    if modelName == "CNNRNN_Res_epi":
+    if modelName == "SEIRmodel":
         BetaList = None
         GammaList = None
         SigmaList = None # Renamed from NGMList
@@ -125,7 +125,7 @@ def GetPrediction(loader, data, model, evaluateL2, evaluateL1, batch_size, model
     for inputs in loader.get_batches(data, batch_size, False):
         X, Y = inputs[0], inputs[1]
         
-        if modelName == "CNNRNN_Res_epi":
+        if modelName == "SEIRmodel":
             # UPDATED unpack for SEIR model
             output, EpiOutput, Beta, Gamma, Sigma = model(X);
         else:
@@ -138,7 +138,7 @@ def GetPrediction(loader, data, model, evaluateL2, evaluateL1, batch_size, model
             Y_true = Y.cpu()
             X_true = X.cpu()
 
-            if modelName == "CNNRNN_Res_epi":
+            if modelName == "SEIRmodel":
                 BetaList = Beta.cpu()
                 GammaList = Gamma.cpu()
                 SigmaList = Sigma.cpu() 
@@ -147,7 +147,7 @@ def GetPrediction(loader, data, model, evaluateL2, evaluateL1, batch_size, model
             Y_true = torch.cat((Y_true, Y.cpu()))
             X_true = torch.cat((X_true, X.cpu()))
 
-            if modelName == "CNNRNN_Res_epi":
+            if modelName == "SEIRmodel":
                 BetaList = torch.cat((BetaList, Beta.cpu()))
                 GammaList = torch.cat((GammaList, Gamma.cpu()))
                 SigmaList = torch.cat((SigmaList, Sigma.cpu()))
@@ -163,12 +163,12 @@ def GetPrediction(loader, data, model, evaluateL2, evaluateL1, batch_size, model
     Y_true = Y_true.detach().numpy()
     X_true = X_true.detach().numpy()
 
-    if modelName == "CNNRNN_Res_epi":
+    if modelName == "SEIRmodel":
         BetaList = BetaList.detach().numpy()
         GammaList = GammaList.detach().numpy()
         SigmaList = SigmaList.detach().numpy()
 
-    if modelName == "CNNRNN_Res_epi":
+    if modelName == "SEIRmodel":
         return X_true, Y_predict, Y_true, BetaList, GammaList, SigmaList
     else:
         return X_true, Y_predict, Y_true
