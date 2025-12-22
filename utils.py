@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 from torch.autograd import Variable
+import matplotlib.pyplot as plt
+import os
 
 
 def normal_std(x):
@@ -26,6 +28,57 @@ class Data_utility(object):
         self.normalize = args.normalize
         self.scale = np.ones(self.m)
         self._normalized(self.normalize)
+
+        # Create plots folder
+        os.makedirs('plots', exist_ok=True)
+
+        # Plot 1: Raw data regions 1-5
+        plt.figure(figsize=(10, 6))
+        for i in range(5):
+            plt.plot(self.rawdat[:, i], label=f'Region {i+1}')
+        plt.title('Raw Data - Regions 1-5')
+        plt.xlabel('Week')
+        plt.ylabel('Weighted ILI')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig('plots/raw_1_5.png')
+        plt.close()
+
+        # Plot 2: Raw data regions 6-10
+        plt.figure(figsize=(10, 6))
+        for i in range(5, 10):
+            plt.plot(self.rawdat[:, i], label=f'Region {i+1}')
+        plt.title('Raw Data - Regions 6-10')
+        plt.xlabel('Week')
+        plt.ylabel('Weighted ILI')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig('plots/raw_6_10.png')
+        plt.close()
+
+        # Plot 3: Preprocessed data regions 1-5
+        plt.figure(figsize=(10, 6))
+        for i in range(5):
+            plt.plot(self.dat[:, i], label=f'Region {i+1}')
+        plt.title('Preprocessed Data - Regions 1-5')
+        plt.xlabel('Week')
+        plt.ylabel('Normalized Value')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig('plots/preprocessed_1_5.png')
+        plt.close()
+
+        # Plot 4: Preprocessed data regions 6-10
+        plt.figure(figsize=(10, 6))
+        for i in range(5, 10):
+            plt.plot(self.dat[:, i], label=f'Region {i+1}')
+        plt.title('Preprocessed Data - Regions 6-10')
+        plt.xlabel('Week')
+        plt.ylabel('Normalized Value')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig('plots/preprocessed_6_10.png')
+        plt.close()
 
         # number of training samples, numebr of traninging and validation samples
         self._split(int(args.train * self.n), int((args.train+args.valid) * self.n), self.n)
