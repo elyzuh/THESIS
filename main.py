@@ -5,220 +5,275 @@ from __future__ import print_function
 import argparse
 import math
 import time
-
 import torch
 import torch.nn as nn
-from models import SEIRmodel
 import numpy as np
 import sys
 import os
+
+from models import SEIRmodel
 from utils import *
 from utils_ModelTrainEval import *
 import Optim
 
 import matplotlib.pyplot as plt
-
 from PlotFunc import *
 
-import xlwt
-import csv
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-from sklearn.metrics import mean_absolute_error
-from sklearn.metrics import mean_squared_error
+# =========================================================
+# Argument Parser
+# =========================================================
+parser = argparse.ArgumentParser(description='PINN-based Epidemiology Forecasting')
 
-parser = argparse.ArgumentParser(description='Epidemiology Forecasting')
-# --- Data option
-parser.add_argument('--data', type=str, required=True,help='location of the data file')
-parser.add_argument('--train', type=float, default=0.6,help='how much data used for training')
-parser.add_argument('--valid', type=float, default=0.2,help='how much data used for validation')
-parser.add_argument('--model', type=str, default='SEIRmodel',help='model to select')
-# --- CNNRNN option
+# --- Data options
+parser.add_argument('--data', type=str, required=True)
+parser.add_argument('--train', type=float, default=0.6)
+parser.add_argument('--valid', type=float, default=0.2)
+
+# --- Model options
+parser.add_argument('--model', type=str, default='SEIRmodel')
+
+# misc
 parser.add_argument('--sim_mat', type=str,help='file of similarity measurement (Required for CNNRNN_Res_epi)')
+parser.add_argument('--metric', type=int, default=1, help='whether (1) or not (0) normalize rse and rae with global variance/deviation ')
+parser.add_argument('--ratio', type=float, default=1.,help='The ratio between CNNRNN and residual')
 parser.add_argument('--hidRNN', type=int, default=50, help='number of RNN hidden units')
 parser.add_argument('--residual_window', type=int, default=4,help='The window size of the residual component')
-parser.add_argument('--ratio', type=float, default=1.,help='The ratio between CNNRNN and residual')
-parser.add_argument('--output_fun', type=str, default=None, help='the output function of neural net')
-# --- Logging option
-parser.add_argument('--save_dir', type=str,  default='./save',help='dir path to save the final model')
-parser.add_argument('--save_name', type=str,  default='tmp', help='filename to save the final model')
-# --- Optimization option
-parser.add_argument('--optim', type=str, default='adam', help='optimization method')
 parser.add_argument('--dropout', type=float, default=0.2, help='dropout applied to layers (0 = no dropout)')
-parser.add_argument('--epochs', type=int, default=100,help='upper epoch limit')
-parser.add_argument('--clip', type=float, default=1.,help='gradient clipping')
-parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
-parser.add_argument('--weight_decay', type=float, default=0, help='weight decay (L2 regularization)')
-parser.add_argument('--batch_size', type=int, default=128, metavar='N',help='batch size')
-# --- Misc prediction option
-parser.add_argument('--horizon', type=int, default=12, help='predict horizon')
-parser.add_argument('--window', type=int, default=24 * 7,help='window size')
-parser.add_argument('--metric', type=int, default=1, help='whether (1) or not (0) normalize rse and rae with global variance/deviation ')
-parser.add_argument('--normalize', type=int, default=0, help='the normalized method used, detail in the utils.py')
+parser.add_argument('--output_fun', type=str, default=None, help='the output function of neural net')
 
-parser.add_argument('--seed', type=int, default=54321,help='random seed')
-parser.add_argument('--gpu', type=int, default=None, help='GPU number to use')
-parser.add_argument('--cuda', type=str, default=None, help='use gpu or not')
+# --- Optimization
+parser.add_argument('--epochs', type=int, default=100)
+parser.add_argument('--batch_size', type=int, default=128)
+parser.add_argument('--lr', type=float, default=0.001)
+parser.add_argument('--clip', type=float, default=1.)
+parser.add_argument('--optim', type=str, default='adam')
+parser.add_argument('--weight_decay', type=float, default=0)
 
-parser.add_argument('--epilambda', type=float, default=0.2, help='the weights of epidemiological loss')
+# --- PINN parameters
+parser.add_argument('--epilambda', type=float, default=0.2,
+                    help='Weight of epidemiological (SEIR) constraint loss')
+parser.add_argument('--lambda_t', type=float, default=0.01,
+                    help='Temporal smoothness weight for epidemic parameters')
+
+# --- Forecast settings
+parser.add_argument('--window', type=int, default=24 * 7)
+parser.add_argument('--horizon', type=int, default=12)
+parser.add_argument('--normalize', type=int, default=0)
+
+# --- System
+parser.add_argument('--seed', type=int, default=54321)
+parser.add_argument('--gpu', type=int, default=None)
+parser.add_argument('--save_dir', type=str, default='./save')
+parser.add_argument('--save_name', type=str, default='pinn_seir')
+
+# plots
+parser.add_argument('--ifPlot', type=int, default=1, help='1: plot figures, 0: no plots (evaluation only)')
 
 args = parser.parse_args()
-print(args);
+print(args)
+
+# =========================================================
+# Logging: redirect stdout to .out file
+# =========================================================
+log_dir = "./logs"
+os.makedirs(log_dir, exist_ok=True)
+
+log_file = os.path.join(
+    log_dir,
+    f"{args.save_name}.out"
+)
+
+class Tee(object):
+    def __init__(self, *files):
+        self.files = files
+
+    def write(self, obj):
+        for f in self.files:
+            f.write(obj)
+            f.flush()
+
+    def flush(self):
+        for f in self.files:
+            f.flush()
+
+log_f = open(log_file, "w")
+sys.stdout = Tee(sys.stdout, log_f)
+sys.stderr = Tee(sys.stderr, log_f)
+
+# =========================================================
+# Log command-line arguments at the top of the .out file
+# =========================================================
+print("=========================================================")
+print(f"Run timestamp : {time.strftime('%Y-%m-%d %H:%M:%S')}")
+print("Command-line Arguments:")
+for arg, value in vars(args).items():
+    print(f"{arg}: {value}")
+print("=========================================================\n")
+
+
+
+# =========================================================
+# Environment setup
+# =========================================================
 if not os.path.exists(args.save_dir):
     os.makedirs(args.save_dir)
 
-if args.model in ['CNNRNN_Res_epi'] and args.sim_mat is None:
-    print('CNNRNN_Res_epi requires "sim_mat" option')
-    sys.exit(0)
-
+torch.manual_seed(args.seed)
 args.cuda = args.gpu is not None
 if args.cuda:
     torch.cuda.set_device(args.gpu)
-# Set the random seed manually for reproducibility.
-torch.manual_seed(args.seed)
-if torch.cuda.is_available():
-    if not args.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with --cuda")
-    else:
-        torch.cuda.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)
 
-Data = Data_utility(args);
-# print (Data)
+# =========================================================
+# Load data
+# =========================================================
+Data = Data_utility(args)
 
-model = eval(args.model).Model(args, Data);
-print('model:', model)
+# =========================================================
+# Build model
+# =========================================================
+model = eval(args.model).Model(args, Data)
 if args.cuda:
     model.cuda()
 
-nParams = sum([p.nelement() for p in model.parameters()])
-print('* number of parameters: %d' % nParams)
+print(model)
+print('* number of parameters:', sum(p.nelement() for p in model.parameters()))
 
-criterion = nn.MSELoss(reduction='sum');
-evaluateL2 = nn.MSELoss(reduction='sum');
+# =========================================================
+# Loss functions
+# =========================================================
+criterion = nn.MSELoss(reduction='sum')
+evaluateL2 = nn.MSELoss(reduction='sum')
 evaluateL1 = nn.L1Loss(reduction='sum')
 
 if args.cuda:
-    criterion = criterion.cuda()
-    evaluateL1 = evaluateL1.cuda();
-    evaluateL2 = evaluateL2.cuda();
+    criterion.cuda()
+    evaluateL2.cuda()
+    evaluateL1.cuda()
 
-best_val = 10000000;
-# for name,para in model.named_parameters():
-#     print (name,para.size())
-#     print (para)
+# =========================================================
+# Optimizer
+# =========================================================
 optim = Optim.Optim(
-    model.parameters(), args.optim, args.lr, args.clip, model.named_parameters(), weight_decay = args.weight_decay,
+    model.parameters(),
+    args.optim,
+    args.lr,
+    args.clip,
+    model.named_parameters(),
+    weight_decay=args.weight_decay
 )
 
-ifPlot = 0
+# =========================================================
+# Training Loop
+# =========================================================
+best_val = float('inf')
 
-# At any point you can hit Ctrl + C to break out of training early.
-try:
-    print('begin training');
-    
-    # --------------------------------------------
-    # Plot the convergence
-    x_epoch=[]
-    y_train_loss=[]
-    y_validate_loss=[]
-    # --------------------------------------------
+print("\nBEGIN TRAINING (PINN-SEIR)\n")
 
-    for epoch in range(1, args.epochs+1):
-        epoch_start_time = time.time()
-        train_loss = train(Data, Data.train, model, criterion, optim, args.batch_size, args.model, args.epilambda)
-        val_loss, val_rae, val_corr = evaluate(Data, Data.valid, model, evaluateL2, evaluateL1, args.batch_size, args.model);
-        print('| end of epoch {:3d} | time: {:5.2f}s | train_loss {:5.8f} | valid rse {:5.4f} | valid rae {:5.4f} | valid corr  {:5.4f}'.format(epoch, (time.time() - epoch_start_time), train_loss, val_loss, val_rae, val_corr))
-        
-        if math.isnan(train_loss)==True:
-            sys.exit()
-        
-        # --------------------------------------------
-        # Plot the convergence
-        x_epoch.append(epoch)
-        y_train_loss.append(train_loss)
-        y_validate_loss.append(val_loss)
-        # --------------------------------------------
+for epoch in range(1, args.epochs + 1):
+    start_time = time.time()
 
-        # Save the model if the validation loss is the best we've seen so far.
-        if val_loss < best_val:
-            best_val = val_loss
-            model_path = '%s/%s.pt' % (args.save_dir, args.save_name)
+    # ---- TRAIN STEP (MODIFIED train() EXPECTED)
+    train_total, train_data, train_epi = train(
+        Data,
+        Data.train,
+        model,
+        criterion,
+        optim,
+        args.batch_size,
+        args.model,
+        args.epilambda,
+        args.lambda_t
+    )
 
-            with open(model_path, 'wb') as f:
-                torch.save(model.state_dict(), f)
-            print('best validation');
-            test_acc, test_rae, test_corr  = evaluate(Data, Data.test, model, evaluateL2, evaluateL1, args.batch_size, args.model);
-            print ("test rse {:5.4f} | test rae {:5.4f} | test corr {:5.4f}".format(test_acc, test_rae, test_corr))
-        
-        #     y_test_loss.append(y_test_loss[-1])
-        # else:
-        #     y_test_loss.append(y_test_loss[-1])
+    # ---- VALIDATION
+    val_rse, val_rae, val_corr = evaluate(
+        Data, Data.valid, model,
+        evaluateL2, evaluateL1,
+        args.batch_size, args.model
+    )
 
-    # # --------------------------------------------
-    # # Plot the convergence
-    if ifPlot == 1:
-        fig, ax = plt.subplots(figsize=(15, 8))
-        ax2 = ax.twinx()
-        labelSize=12
-        ax.plot(x_epoch,y_train_loss,'o-',alpha=0.7,label="Train loss",color="brown",markersize=3,linewidth=2)
-        ax2.plot(x_epoch,y_validate_loss,'o-',alpha=0.7,label="Validation loss",color="navy",markersize=3,linewidth=2)
-        ax.legend(loc=2)
-        ax2.legend(loc=1)
-        ax.set_xlabel("Epoch",fontsize=labelSize)
-        ax.set_ylabel("Train Loss",fontsize=labelSize)
-        ax2.set_ylabel("Validation Loss",fontsize=labelSize)
+    print(
+        f"| Epoch {epoch:03d} | "
+        f"Time {time.time() - start_time:.2f}s | "
+        f"Total {train_total:.6f} | "
+        f"Data {train_data:.6f} | "
+        f"Epi {train_epi:.6f} | "
+        f"Val RSE {val_rse:.4f}"
+    )
 
-        # figure_save_dir="./Results/"
-        save_name=args.model+"_"+"loss"
-        model_path = '%s/%s.pt' % (args.save_dir, args.save_name)
-        figure_save_dir = './Figures/%s/' % (args.save_name)
-        
-        if not os.path.exists(figure_save_dir):
-            os.makedirs(figure_save_dir)
+    if math.isnan(train_total):
+        sys.exit("NaN encountered")
 
-        plt.savefig(figure_save_dir+save_name+".pdf",bbox_inches='tight',transparent=True)
-        plt.close('all')
-    # # --------------------------------------------
+    # ---- SAVE BEST MODEL
+    if val_rse < best_val:
+        best_val = val_rse
+        model_path = f"{args.save_dir}/{args.save_name}.pt"
+        torch.save(model.state_dict(), model_path)
 
-except KeyboardInterrupt:
-    print('-' * 89)
-    print('Exiting from training early')
+        test_rse, test_rae, test_corr = evaluate(
+            Data, Data.test, model,
+            evaluateL2, evaluateL1,
+            args.batch_size, args.model
+        )
 
-# Load the best saved model.
-# print (args.save_dir)
-# print (args.save_name)
-model_path = '%s/%s.pt' % (args.save_dir, args.save_name)
-with open(model_path, 'rb') as f:
-    model.load_state_dict(torch.load(f));
+        print(
+            f"  >> BEST MODEL SAVED | "
+            f"Test RSE {test_rse:.4f} | "
+            f"RAE {test_rae:.4f} | "
+            f"CORR {test_corr:.4f}"
+        )
 
-print ("----------------------------")
-print ("Data.test")
-test_acc, test_rae, test_corr  = evaluate(Data, Data.test, model, evaluateL2, evaluateL1, args.batch_size, args.model);
-print ("test rse {:5.4f} | test rae {:5.4f} | test corr {:5.4f}".format(test_acc, test_rae, test_corr))
+# =========================================================
+# Load Best Model (ALWAYS)
+# =========================================================
+best_model_path = f"{args.save_dir}/{args.save_name}.pt"
+assert os.path.exists(best_model_path), "Best model not found!"
 
-# # --------------------------------------------
-if args.model=="CNNRNN_Res_epi" and ifPlot == 1:
-    X_true, Y_predict, Y_true, BetaList, GammaList, NGMList = GetPrediction(Data, Data.test, model, evaluateL2, evaluateL1, args.batch_size, args.model)
-    # print (X_true.shape)
-    # print (Y_predict.shape)
-    # print (Y_true.shape)
+model.load_state_dict(torch.load(best_model_path))
+model.eval()
 
-    save_dir = './Figures/%s.epo-%s/' % (args.save_name, args.epochs)
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-        
-    PlotPredictionTrends(Y_true.T, Y_predict.T, save_dir)
-    PlotParameters(BetaList.T, GammaList.T, save_dir)
-    PlotTrends(X_true.transpose(2, 0, 1), Y_true.T, Y_predict.T, save_dir, args.horizon)
-    
-    Type = "Next Generation Matrix"
-    SaveName = "NGM"
-    # PlotEachMatrix(NGMList, Type, SaveName, save_dir)
-    # --- UPDATED CODE START ---
-    # NGMList actually contains Sigma (Incubation Rate) now, so we rename it for clarity
-    SigmaList = NGMList 
-    
-    # Use the new function to plot Sigma (Line graph), NOT PlotAllMatrices (Heatmap)
-    PlotSigma(SigmaList.T, save_dir)
-    # --- UPDATED CODE END ---
+print("\n================ FINAL EVALUATION ================\n")
 
+test_rse, test_rae, test_corr = evaluate(
+    Data, Data.test, model,
+    evaluateL2, evaluateL1,
+    args.batch_size, args.model
+)
 
+print(
+    f"Test RSE  : {test_rse:.4f}\n"
+    f"Test RAE  : {test_rae:.4f}\n"
+    f"Test CORR : {test_corr:.4f}\n"
+)
+
+# =========================================================
+# Prediction & Interpretability (NO PLOTTING YET)
+# =========================================================
+X_true, Y_pred, Y_true, BetaList, GammaList, SigmaList = GetPrediction(
+    Data, Data.test, model,
+    evaluateL2, evaluateL1,
+    args.batch_size, args.model
+)
+
+# =========================================================
+# Conditional Plotting
+# =========================================================
+if args.ifPlot == 1:
+    print("Plotting enabled — generating figures...")
+
+    fig_dir = f"./Figures/{args.save_name}/"
+    os.makedirs(fig_dir, exist_ok=True)
+
+    PlotPredictionTrends(Y_true.T, Y_pred.T, fig_dir)
+    PlotParameters(BetaList.T, GammaList.T, fig_dir)
+    PlotSigma(SigmaList.T, fig_dir)
+
+    print(f"Figures saved to {fig_dir}")
+
+else:
+    print("Plotting disabled (ifPlot=0). Evaluation only.")
+
+print("\n==================== DONE ====================\n")
