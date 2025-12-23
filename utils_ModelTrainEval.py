@@ -69,45 +69,85 @@ def evaluate(loader, data, model, evaluateL2, evaluateL1, batch_size, modelName)
     correlation = (correlation[index]).mean();
     return rse, rae, correlation;
 
-def train(loader, data, model, criterion, optim, batch_size, modelName, Lambda):
-    model.train();
-    total_loss = 0;
-    n_samples = 0;
-    counter = 0
+def train(loader, data, model, criterion, optim,
+          batch_size, modelName, Lambda, lambda_t=0.0):
+    """
+    Training step with explicit PINN loss decomposition:
+    - data loss
+    - epidemiological (SEIR) loss
+    - temporal smoothness regularization
+    """
+    model.train()
+
+    total_loss_sum = 0.0
+    data_loss_sum = 0.0
+    epi_loss_sum = 0.0
+    n_samples = 0
 
     for inputs in loader.get_batches(data, batch_size, True):
-        counter += 1
         X, Y = inputs[0], inputs[1]
+        model.zero_grad()
 
-        model.zero_grad();
-
+        # --------------------------------------------
+        # Forward pass
         if modelName == "SEIRmodel":
-            output, EpiOutput, _, _, _ = model(X);
+            output, EpiOutput, Beta, Gamma, Sigma = model(X)
         else:
-            output = model(X);
+            output = model(X)
 
         scale = loader.scale.expand(output.size(0), loader.m)
-        
+
         # --------------------------------------------
-        # modified loss with epidemiological constrains
+        # Data loss
+        data_loss = criterion(output * scale, Y * scale)
+
+        # --------------------------------------------
+        # Epidemiological (PINN) loss
+        epi_loss = torch.tensor(0.0, device=output.device)
         if modelName == "SEIRmodel":
-            # Ensure EpiOutput is on same device and scale
-            loss = criterion(output * scale, Y * scale) + Lambda*criterion(EpiOutput * scale, Y * scale);
-        else:
-            loss = criterion(output * scale, Y * scale);
+            epi_loss = criterion(EpiOutput * scale, Y * scale)
 
         # --------------------------------------------
-        torch.autograd.set_detect_anomaly(True)
-        loss.backward(retain_graph=True);
-        optim.step();
+        # Temporal smoothness regularization (PINN-inspired)
+        temporal_loss = torch.tensor(0.0, device=output.device)
 
-        if torch.__version__ < '0.4.0':
-            total_loss += loss.data[0]
-        else:
-            total_loss += loss.item()
-        n_samples += (output.size(0) * loader.m);
-    
-    return total_loss / n_samples
+        if modelName == "SEIRmodel" and lambda_t > 0:
+            # enforce smooth evolution of epidemic parameters
+            if Beta is not None and Beta.size(0) > 1:
+                temporal_loss += torch.mean((Beta[1:] - Beta[:-1]) ** 2)
+            if Gamma is not None and Gamma.size(0) > 1:
+                temporal_loss += torch.mean((Gamma[1:] - Gamma[:-1]) ** 2)
+            if Sigma is not None and Sigma.size(0) > 1:
+                temporal_loss += torch.mean((Sigma[1:] - Sigma[:-1]) ** 2)
+
+        # --------------------------------------------
+        # Total loss
+        total_loss = (
+            data_loss
+            + Lambda * epi_loss
+            + lambda_t * temporal_loss
+        )
+
+        # --------------------------------------------
+        total_loss.backward()
+        optim.step()
+
+        # --------------------------------------------
+        # Accumulate statistics
+        batch_samples = output.size(0) * loader.m
+        total_loss_sum += total_loss.item()
+        data_loss_sum += data_loss.item()
+        epi_loss_sum += epi_loss.item() if modelName == "SEIRmodel" else 0.0
+        n_samples += batch_samples
+
+    # --------------------------------------------
+    # Normalize losses
+    total_loss_avg = total_loss_sum / n_samples
+    data_loss_avg = data_loss_sum / n_samples
+    epi_loss_avg = epi_loss_sum / n_samples
+
+    return total_loss_avg, data_loss_avg, epi_loss_avg
+
 
 def GetPrediction(loader, data, model, evaluateL2, evaluateL1, batch_size, modelName):
     model.eval();
