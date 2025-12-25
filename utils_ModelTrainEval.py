@@ -67,7 +67,16 @@ def evaluate(loader, data, model, evaluateL2, evaluateL1, batch_size, modelName)
 
     correlation = ((predict - mean_p) * (Ytest - mean_g)).mean(axis = 0)/(sigma_p * sigma_g);
     correlation = (correlation[index]).mean();
-    return rse, rae, correlation;
+
+        # --------------------------------------------
+    # R-squared (Coefficient of Determination)
+    # Flatten across time and locations for global R²
+    r2 = r2_score(
+        Ytest.reshape(-1),
+        predict.reshape(-1)
+    )
+
+    return rse, rae, correlation, r2;
 
 def train(loader, data, model, criterion, optim,
           batch_size, modelName, Lambda, lambda_t=0.0):
