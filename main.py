@@ -35,7 +35,7 @@ parser.add_argument('--valid', type=float, default=0.2)
 parser.add_argument('--model', type=str, default='SEIRmodel')
 
 # misc
-parser.add_argument('--sim_mat', type=str,help='file of similarity measurement (Required for CNNRNN_Res_epi)')
+parser.add_argument('--sim_mat', type=str,default="./data/us_hhs/ind_mat.txt", help='file of similarity measurement (Required for CNNRNN_Res_epi)')
 parser.add_argument('--metric', type=int, default=1, help='whether (1) or not (0) normalize rse and rae with global variance/deviation ')
 parser.add_argument('--ratio', type=float, default=1.,help='The ratio between CNNRNN and residual')
 parser.add_argument('--hidRNN', type=int, default=50, help='number of RNN hidden units')
