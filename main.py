@@ -189,7 +189,7 @@ for epoch in range(1, args.epochs + 1):
     )
 
     # ---- VALIDATION
-    val_rse, val_rae, val_corr = evaluate(
+    val_rse, val_rae, val_corr,val_r2 = evaluate(
         Data, Data.valid, model,
         evaluateL2, evaluateL1,
         args.batch_size, args.model
@@ -201,7 +201,8 @@ for epoch in range(1, args.epochs + 1):
         f"Total {train_total:.6f} | "
         f"Data {train_data:.6f} | "
         f"Epi {train_epi:.6f} | "
-        f"Val RSE {val_rse:.4f}"
+        f"Val RSE {val_rse:.4f} |"
+        f"Val R² {val_r2:.4f}"
     )
 
     if math.isnan(train_total):
@@ -213,7 +214,7 @@ for epoch in range(1, args.epochs + 1):
         model_path = f"{args.save_dir}/{args.save_name}.pt"
         torch.save(model.state_dict(), model_path)
 
-        test_rse, test_rae, test_corr = evaluate(
+        test_rse, test_rae, test_corr,test_r2  = evaluate(
             Data, Data.test, model,
             evaluateL2, evaluateL1,
             args.batch_size, args.model
@@ -223,7 +224,8 @@ for epoch in range(1, args.epochs + 1):
             f"  >> BEST MODEL SAVED | "
             f"Test RSE {test_rse:.4f} | "
             f"RAE {test_rae:.4f} | "
-            f"CORR {test_corr:.4f}"
+            f"CORR {test_corr:.4f} | "
+            f"R² {test_r2:.4f}"
         )
 
 # =========================================================
@@ -237,7 +239,7 @@ model.eval()
 
 print("\n================ FINAL EVALUATION ================\n")
 
-test_rse, test_rae, test_corr = evaluate(
+test_rse, test_rae, test_corr, test_r2 = evaluate(
     Data, Data.test, model,
     evaluateL2, evaluateL1,
     args.batch_size, args.model
@@ -247,6 +249,7 @@ print(
     f"Test RSE  : {test_rse:.4f}\n"
     f"Test RAE  : {test_rae:.4f}\n"
     f"Test CORR : {test_corr:.4f}\n"
+    f"Test R²   : {test_r2:.4f}\n"
 )
 
 # =========================================================
