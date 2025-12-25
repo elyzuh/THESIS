@@ -274,6 +274,31 @@ if args.ifPlot == 1:
     PlotParameters(BetaList.T, GammaList.T, fig_dir)
     PlotSigma(SigmaList.T, fig_dir)
 
+        # =========================================================
+    # Heatmap plots (SEIR interpretability)
+    # =========================================================
+    if hasattr(model, "NextGenerationMatrix"):
+        print("Plotting Next Generation Matrix heatmap...")
+        PlotMatrix(
+            model.NextGenerationMatrix.detach().cpu().numpy(),
+            "Next Generation Matrix",
+            "NextGenerationMatrix",
+            fig_dir
+        )
+
+    # Mobility / contact matrix (if present)
+    if hasattr(model, "adj") and hasattr(model, "mask_mat"):
+        print("Plotting Human Mobility Matrix heatmap...")
+        D = model.mask_mat * model.adj
+        D = torch.clamp(D, 0, 1)
+
+        PlotMatrix(
+            D.detach().cpu().numpy(),
+            "Human Mobility Matrix",
+            "HumanMobilityMatrix",
+            fig_dir
+        )
+
     print(f"Figures saved to {fig_dir}")
 
 else:
