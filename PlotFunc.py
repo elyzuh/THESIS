@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import math
 import numpy as np
+import os
 
 ####################################################
 # ---- plot figures
@@ -245,5 +246,81 @@ def PlotSigma(SigmaList, save_dir):
         FigureType = "PredictedSigma"
         plt.savefig(save_dir + FigureType + "-" + str(i+1) + ".pdf", transparent=True, bbox_inches='tight')
         plt.close()
+
+def PlotMatrix(Matrix, Type, SaveName, save_dir,
+               symmetric=True,
+               annotate=False):
+    """
+    Plot publication-quality epidemiological heatmaps.
+
+    Parameters
+    ----------
+    Matrix : np.ndarray
+        2D matrix (NGM, mobility, adjacency, etc.)
+    Type : str
+        Descriptive title (e.g., 'Next Generation Matrix')
+    SaveName : str
+        Output filename (without extension)
+    save_dir : str
+        Directory to save figure
+    symmetric : bool
+        If True, center color scale at zero (for interaction matrices)
+    annotate : bool
+        If True, write values inside cells (NOT recommended for large matrices)
+    """
+
+    Matrix = np.asarray(Matrix)
+
+    plt.figure(figsize=(6, 5))
+
+    # --- Colormap selection
+    if Type in ["Next Generation Matrix", "Human Mobility Matrix"]:
+        cmap = 'Spectral_r'
+    else:
+        cmap = 'RdBu_r'
+
+    # --- Color scaling
+    if symmetric:
+        vmax = np.max(np.abs(Matrix))
+        vmin = -vmax
+    else:
+        vmin = np.min(Matrix)
+        vmax = np.max(Matrix)
+
+    ax = sns.heatmap(
+        Matrix,
+        cmap=cmap,
+        square=True,
+        cbar=True,
+        vmin=vmin,
+        vmax=vmax,
+        linewidths=0.4,
+        linecolor='lightgray',
+        annot=annotate,
+        fmt=".2f",
+        xticklabels=False,
+        yticklabels=False,
+        cbar_kws={
+            'shrink': 0.8,
+            'pad': 0.02
+        }
+    )
+
+    # --- Epidemiology-style formatting
+    ax.xaxis.tick_top()
+    ax.tick_params(axis='both', which='both', length=0)
+
+    # --- Optional title (commented for paper figures)
+    # plt.title(Type, fontsize=13, pad=12)
+
+    # --- Save
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(
+        os.path.join(save_dir, f"{SaveName}.pdf"),
+        bbox_inches='tight',
+        transparent=True,
+        dpi=300
+    )
+    plt.close()
 
     
