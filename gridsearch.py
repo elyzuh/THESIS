@@ -10,42 +10,36 @@ from datetime import datetime
 DATA_PATH = "./data/us_hhs/data.txt"
 SAVE_DIR = "./save"
 
-# 48-run focused search around current best
+# 27-run ultra-focused search around current champion
 grid = {
     '--horizon': [12],
-    '--window': [154, 158],           # Slight variation around 156
-    '--hidRNN': [38, 42],              # Around 40
-    '--dropout': [0.14, 0.15, 0.16],
-    '--epilambda': [0.14, 0.16],       # Test slightly lower/higher physics weight
-    '--lr': [0.00065, 0.00075],        # Around 0.0007
-    '--lambda_t': [0.01],             # Keep strong value
+    '--window': [156],                     # Locked to best
+    '--hidRNN': [40],                      # Locked to best
+    '--dropout': [0.14, 0.15, 0.16],        # Small steps
+    '--epilambda': [0.14, 0.15, 0.16],      # Small steps around 0.15
+    '--lr': [0.00065, 0.0007, 0.00075],     # Fine learning rate tuning
+    '--lambda_t': [0.01],                  # Locked
     '--batch_size': [128],
-    '--epochs': [600],
+    '--epochs': [650],
 }
 
-MAX_RUNS = None  # Set to 8 for testing
+MAX_RUNS = None  # Set to 9 for quick test
 
 keys = list(grid.keys())
 values = list(grid.values())
-total_combinations = len(list(itertools.product(*values)))  # = 48
+total_combinations = len(list(itertools.product(*values)))  # 27 runs
 
-print(f"Total combinations: {total_combinations} (48 runs — fast & focused)")
+print(f"Total combinations: {total_combinations} (27 ultra-fast runs)")
 
-print(f"Total combinations: {total_combinations}")
 if MAX_RUNS:
-    print(f"Limiting to {MAX_RUNS} runs for testing.")
     total_combinations = min(total_combinations, MAX_RUNS)
 
 print("="*70)
-print("STARTING FINE-GRAINED GRID SEARCH (v2)")
+print("STARTING ULTRA-FOCUSED FINAL SEARCH")
 print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-print("Centered on new best config:")
-print("  window=156, hidRNN=40, dropout=0.15, epilambda=0.15, lambda_t=0.01, lr=0.0007")
+print("Locked: window=156, hidRNN=40, lambda_t=0.01")
+print("Tuning: dropout, epilambda, lr")
 print("="*70)
-
-# =========================================================
-# Run experiments
-# =========================================================
 
 count = 0
 for combo in itertools.product(*values):
@@ -60,7 +54,7 @@ for combo in itertools.product(*values):
         args_list.extend([k, str(v)])
         config_str.append(f"{k.split('--')[1]}-{v}")
 
-    run_name = "seir_ultrafine." + ".".join(config_str)  # Clear naming
+    run_name = "seir_final." + ".".join(config_str)
 
     cmd = [
         ".venv/Scripts/python.exe", "main.py",
@@ -74,29 +68,22 @@ for combo in itertools.product(*values):
         "--train", "0.6",
         "--valid", "0.2",
     ]
-
     cmd.extend(args_list)
 
     print(f"\n[{count}/{total_combinations}] Launching: {run_name}")
-    print("Command:", " ".join(cmd[:10]) + " ...")  # Truncated for readability
 
     try:
         result = subprocess.run(cmd, check=False)
-        status = "✓ SUCCESS" if result.returncode == 0 else f"✗ FAILED (code {result.returncode})"
+        status = "✓ SUCCESS" if result.returncode == 0 else f"✗ FAILED ({result.returncode})"
         print(f"{status}: {run_name}")
-    except KeyboardInterrupt:
-        print("\nGrid search interrupted by user.")
-        break
     except Exception as e:
-        print(f"✗ ERROR launching {run_name}: {e}")
+        print(f"Error: {e}")
 
     time.sleep(2)
 
 print("\n" + "="*70)
-print("FINE-GRAINED GRID SEARCH (v2) COMPLETED")
+print("FINAL SEARCH COMPLETED")
 print(f"Ran {count} experiments.")
-print("Next step:")
-print("    python generatesummary.py")
-print("New top models will appear with prefix 'seir_ultrafine.'")
-print("Logs → ./logs/ | Models → ./save/")
+print("Run: python generatesummary.py")
+print("Look for runs with prefix 'seir_final.'")
 print("="*70)
